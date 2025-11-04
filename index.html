@@ -28,9 +28,9 @@ footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
 .tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .tag{background:#eef2ff;color:#1e3a8a;padding:6px 8px;border-radius:999px;font-size:13px}
 @media (max-width:880px){.hero{grid-template-columns:1fr}.logo{width:48px;height:48px}}
+#newPostBtn{position:fixed;bottom:20px;right:20px;padding:12px 16px;background:var(--accent);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;z-index:1000}
 </style>
 
-<!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
@@ -56,7 +56,6 @@ footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
   <section>
     <div class="card" id="posts">
       <h2 style="margin-top:0">Latest posts</h2>
-      <!-- Posts render here -->
     </div>
 
     <div style="height:20px"></div>
@@ -102,6 +101,8 @@ footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
 </footer>
 </div>
 
+<button id="newPostBtn">New Post</button>
+
 <script>
 const yearEl = document.getElementById('year');
 yearEl.textContent = new Date().getFullYear();
@@ -110,7 +111,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyCJjhkq3KdB65hxp6-95fbgbwzWpWAucbI",
   authDomain: "blogg-b66ef.firebaseapp.com",
   projectId: "blogg-b66ef",
-  storageBucket: "blogg-b66ef.firebasestorage.app",
+  storageBucket: "blogg-b66ef.appspot.com",
   messagingSenderId: "866277401593",
   appId: "1:866277401593:web:324161cdeb92f09fd29328",
   measurementId: "G-N6Y00ZNR3J"
@@ -127,7 +128,14 @@ const tagInput = document.getElementById('tagInput');
 const authorEl = document.getElementById('authorName');
 const tagsEl = document.getElementById('tags');
 
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+// Scroll to form when floating button clicked
+document.getElementById('newPostBtn').addEventListener('click',()=>{
+  document.querySelector('.new-post').scrollIntoView({behavior:'smooth'});
+});
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 function renderTags(posts){
   const set = new Set();
@@ -147,7 +155,6 @@ function renderPosts(posts, currentUid){
     const wrap = document.createElement('article');
     wrap.className = 'post card';
 
-    // Convert ISO date to readable local format
     const date = new Date(p.date);
     const formattedDate = date.toLocaleString();
 
@@ -173,10 +180,12 @@ function showModal(p){
   modal.style.alignItems='center';
   modal.style.justifyContent='center';
   modal.style.background='rgba(0,0,0,0.4)';
+  const date = new Date(p.date);
+  const formattedDate = date.toLocaleString();
   modal.innerHTML = `
     <div style="max-width:720px;width:92%;background:white;border-radius:12px;padding:18px;box-shadow:0 10px 30px rgba(2,6,23,0.3)">
       <h2 style="margin-top:0">${escapeHtml(p.title)}</h2>
-      <div style="color:var(--muted);margin-bottom:8px">${p.date} · ${escapeHtml(p.authorName)} · ${p.tags.join(', ')}</div>
+      <div style="color:var(--muted);margin-bottom:8px">${formattedDate} · ${escapeHtml(p.authorName)} · ${p.tags.join(', ')}</div>
       <div style="color:#111;font-size:15px;line-height:1.6">${escapeHtml(p.content).replace(/\n/g,'<br>')}</div>
       <div style="text-align:right;margin-top:16px"><button id="closeModal">Close</button></div>
     </div>
@@ -185,7 +194,6 @@ function showModal(p){
   document.getElementById('closeModal').addEventListener('click',()=>modal.remove());
 }
 
-// Load posts
 firebase.auth().onAuthStateChanged(user=>{
   if(!user) return;
   const uid = user.uid;
@@ -207,14 +215,12 @@ firebase.auth().onAuthStateChanged(user=>{
     if(!title || !content){ alert('Title and content required'); return; }
 
     const post = {
-  title, content, tags,
-  authorId: uid,
-  authorName,
-  date: new Date().toISOString()  // full timestamp with time
-  };
+      title, content, tags,
+      authorId: uid,
+      authorName,
+      date: new Date().toISOString()
+    };
 
-    db.collection('posts').orderBy('date', 'desc')
-    
     db.collection('posts').add(post).then(()=>{
       titleEl.value=''; contentEl.value=''; tagInput.value='';
       fetchAndRender();
@@ -242,5 +248,3 @@ firebase.auth().onAuthStateChanged(user=>{
 </script>
 </body>
           </html>
-
-
