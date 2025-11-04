@@ -31,11 +31,9 @@ footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
 @media (max-width:880px){.hero{grid-template-columns:1fr}.logo{width:48px;height:48px} #newPostBtn{display:block} .sidebar{display:none}}
 </style>
 
-<!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-storage-compat.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -79,7 +77,6 @@ footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
         <input id="authorName" type="text" placeholder="Your name">
         <input id="title" type="text" placeholder="Post title">
         <textarea id="content" rows="6" placeholder="Write your post here"></textarea>
-        <input id="imageInput" type="file" accept="image/*">
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button id="saveBtn">Publish</button>
         </div>
@@ -102,16 +99,13 @@ footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
 </footer>
 </div>
 
-<!-- Mobile Floating Button -->
 <button id="newPostBtn">New Post</button>
 
-<!-- Mobile Modal -->
 <div id="mobileModal">
   <div class="modalContent">
     <input id="mobileAuthor" type="text" placeholder="Your name">
     <input id="mobileTitle" type="text" placeholder="Post title">
     <textarea id="mobileContent" rows="6" placeholder="Write your post here"></textarea>
-    <input id="mobileImage" type="file" accept="image/*">
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button id="mobileCancel">Cancel</button>
       <button id="mobileSave">Publish</button>
@@ -127,27 +121,21 @@ const firebaseConfig = {
   apiKey: "AIzaSyCJjhkq3KdB65hxp6-95fbgbwzWpWAucbI",
   authDomain: "blogg-b66ef.firebaseapp.com",
   projectId: "blogg-b66ef",
-  storageBucket: "blogg-b66ef.appspot.com",
-  messagingSenderId: "866277401593",
-  appId: "1:866277401593:web:324161cdeb92f09fd29328"
 };
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const storage = firebase.storage();
 firebase.auth().signInAnonymously();
 
 const postsEl = document.getElementById('posts');
 const titleEl = document.getElementById('title');
 const contentEl = document.getElementById('content');
 const authorEl = document.getElementById('authorName');
-const imageInput = document.getElementById('imageInput');
 
 const mobileModal = document.getElementById('mobileModal');
 const mobileTitle = document.getElementById('mobileTitle');
 const mobileContent = document.getElementById('mobileContent');
 const mobileAuthor = document.getElementById('mobileAuthor');
-const mobileImage = document.getElementById('mobileImage');
 const mobileSave = document.getElementById('mobileSave');
 const mobileCancel = document.getElementById('mobileCancel');
 
@@ -163,12 +151,10 @@ function renderPosts(posts, currentUid){
     wrap.className='post card';
     const date = new Date(p.date);
     const formattedDate = date.toLocaleString();
-    let imageHtml = p.imageUrl ? `<img src="${p.imageUrl}" style="max-width:100%;margin-top:8px;border-radius:8px">` : '';
     wrap.innerHTML=`
       <h3>${escapeHtml(p.title)}</h3>
       <div class="meta">${formattedDate} · ${escapeHtml(p.authorName)}</div>
       <div class="excerpt">${escapeHtml(p.content).slice(0,160)}</div>
-      ${imageHtml}
       <div style="margin-top:8px">
         ${p.authorId===currentUid ? `<button data-id="${p.id}" class="del" style="background:#ef4444">Delete</button>` : ''}
         <button data-id="${p.id}" class="open">Read</button>
@@ -176,20 +162,6 @@ function renderPosts(posts, currentUid){
     `;
     postsEl.appendChild(wrap);
   });
-}
-
-function uploadPost(title, content, authorName, fileInput, callback){
-  if(fileInput && fileInput.files.length){
-    const file = fileInput.files[0];
-    const ref = storage.ref().child('images/'+Date.now()+'_'+file.name);
-    ref.put(file).then(snapshot=>{
-      snapshot.ref.getDownloadURL().then(url=>{
-        callback({title, content, authorName, imageUrl: url});
-      });
-    }).catch(()=>callback({title, content, authorName}));
-  } else {
-    callback({title, content, authorName});
-  }
 }
 
 firebase.auth().onAuthStateChanged(user=>{
@@ -205,27 +177,23 @@ firebase.auth().onAuthStateChanged(user=>{
 
   fetchAndRender();
 
-  function saveHandler(titleEl, contentEl, authorEl, imageEl){
+  function saveHandler(titleEl, contentEl, authorEl){
     const title = titleEl.value.trim();
     const content = contentEl.value.trim();
     const authorName = authorEl.value.trim() || 'Anonymous';
     if(!title || !content){ alert('Title and content required'); return; }
 
-    uploadPost(title, content, authorName, imageEl, postData=>{
-      postData.authorId = uid;
-      postData.date = new Date().toISOString();
-      db.collection('posts').add(postData).then(()=>{
-        titleEl.value = '';
-        contentEl.value = '';
-        if(imageEl) imageEl.value = '';
-        if(imageEl === mobileImage) mobileModal.style.display = 'none';
-        fetchAndRender();
-      });
+    const postData = { title, content, authorName, authorId: uid, date: new Date().toISOString() };
+    db.collection('posts').add(postData).then(()=>{
+      titleEl.value = '';
+      contentEl.value = '';
+      if(titleEl === mobileTitle) mobileModal.style.display = 'none';
+      fetchAndRender();
     });
   }
 
-  document.getElementById('saveBtn').addEventListener('click',()=>saveHandler(titleEl, contentEl, authorEl, imageInput));
-  mobileSave.addEventListener('click',()=>saveHandler(mobileTitle, mobileContent, mobileAuthor, mobileImage));
+  document.getElementById('saveBtn').addEventListener('click',()=>saveHandler(titleEl, contentEl, authorEl));
+  mobileSave.addEventListener('click',()=>saveHandler(mobileTitle, mobileContent, mobileAuthor));
 
   postsEl.addEventListener('click',e=>{
     const id = e.target.dataset.id;
@@ -256,13 +224,11 @@ function showModal(p){
   modal.style.background='rgba(0,0,0,0.4)';
   const date = new Date(p.date);
   const formattedDate = date.toLocaleString();
-  let imageHtml = p.imageUrl ? `<img src="${p.imageUrl}" style="max-width:100%;margin-top:8px;border-radius:8px">` : '';
   modal.innerHTML = `
     <div style="max-width:720px;width:92%;background:white;border-radius:12px;padding:18px;box-shadow:0 10px 30px rgba(2,6,23,0.3)">
       <h2 style="margin-top:0">${escapeHtml(p.title)}</h2>
       <div style="color:var(--muted);margin-bottom:8px">${formattedDate} · ${escapeHtml(p.authorName)}</div>
       <div style="color:#111;font-size:15px;line-height:1.6">${escapeHtml(p.content).replace(/\n/g,'<br>')}</div>
-      ${imageHtml}
       <div style="text-align:right;margin-top:16px"><button id="closeModal">Close</button></div>
     </div>
   `;
@@ -272,4 +238,3 @@ function showModal(p){
 </script>
 </body>
 </html>
-                                                                                                                            </html>
