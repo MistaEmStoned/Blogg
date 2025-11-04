@@ -27,13 +27,17 @@ button{background:var(--accent);color:white;border:0;padding:10px 12px;border-ra
 footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
 .tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .tag{background:#eef2ff;color:#1e3a8a;padding:6px 8px;border-radius:999px;font-size:13px}
-@media (max-width:880px){.hero{grid-template-columns:1fr}.logo{width:48px;height:48px}}
-#newPostBtn{position:fixed;bottom:20px;right:20px;padding:12px 16px;background:var(--accent);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;z-index:1000}
+#newPostBtn{display:none;position:fixed;bottom:20px;right:20px;padding:12px 16px;background:var(--accent);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;z-index:1000}
+#mobileModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);align-items:center;justify-content:center;z-index:1000}
+#mobileModal .modalContent{background:white;border-radius:12px;padding:18px;width:90%;max-width:400px;display:flex;flex-direction:column;gap:8px}
+@media (max-width:880px){.hero{grid-template-columns:1fr}.logo{width:48px;height:48px} #newPostBtn{display:block} .sidebar{display:none}}
 </style>
 
+<!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-storage-compat.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -77,6 +81,7 @@ footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
         <input id="authorName" type="text" placeholder="Your name">
         <input id="title" type="text" placeholder="Post title">
         <textarea id="content" rows="6" placeholder="Write your post here"></textarea>
+        <input id="imageInput" type="file" accept="image/*">
         <div style="display:flex;gap:8px;align-items:center">
           <input id="tagInput" type="text" placeholder="Comma separated tags" style="flex:1">
           <button id="saveBtn">Publish</button>
@@ -101,7 +106,23 @@ footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
 </footer>
 </div>
 
+<!-- Mobile Floating Button -->
 <button id="newPostBtn">New Post</button>
+
+<!-- Mobile Modal -->
+<div id="mobileModal">
+  <div class="modalContent">
+    <input id="mobileAuthor" type="text" placeholder="Your name">
+    <input id="mobileTitle" type="text" placeholder="Post title">
+    <textarea id="mobileContent" rows="6" placeholder="Write your post here"></textarea>
+    <input id="mobileImage" type="file" accept="image/*">
+    <input id="mobileTags" type="text" placeholder="Comma separated tags">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="mobileCancel">Cancel</button>
+      <button id="mobileSave">Publish</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const yearEl = document.getElementById('year');
@@ -113,12 +134,12 @@ const firebaseConfig = {
   projectId: "blogg-b66ef",
   storageBucket: "blogg-b66ef.appspot.com",
   messagingSenderId: "866277401593",
-  appId: "1:866277401593:web:324161cdeb92f09fd29328",
-  measurementId: "G-N6Y00ZNR3J"
+  appId: "1:866277401593:web:324161cdeb92f09fd29328"
 };
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const storage = firebase.storage();
 firebase.auth().signInAnonymously();
 
 const postsEl = document.getElementById('posts');
@@ -127,15 +148,22 @@ const contentEl = document.getElementById('content');
 const tagInput = document.getElementById('tagInput');
 const authorEl = document.getElementById('authorName');
 const tagsEl = document.getElementById('tags');
+const imageInput = document.getElementById('imageInput');
 
-// Scroll to form when floating button clicked
-document.getElementById('newPostBtn').addEventListener('click',()=>{
-  document.querySelector('.new-post').scrollIntoView({behavior:'smooth'});
-});
+const mobileModal = document.getElementById('mobileModal');
+const mobileTitle = document.getElementById('mobileTitle');
+const mobileContent = document.getElementById('mobileContent');
+const mobileAuthor = document.getElementById('mobileAuthor');
+const mobileTags = document.getElementById('mobileTags');
+const mobileImage = document.getElementById('mobileImage');
+const mobileSave = document.getElementById('mobileSave');
+const mobileCancel = document.getElementById('mobileCancel');
 
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
+// Floating button opens modal
+document.getElementById('newPostBtn').addEventListener('click',()=>mobileModal.style.display='flex');
+mobileCancel.addEventListener('click',()=>mobileModal.style.display='none');
+
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
 function renderTags(posts){
   const set = new Set();
@@ -153,15 +181,18 @@ function renderPosts(posts, currentUid){
   postsEl.innerHTML = '<h2 style="margin-top:0">Latest posts</h2>';
   posts.forEach(p=>{
     const wrap = document.createElement('article');
-    wrap.className = 'post card';
+    wrap.className='post card';
 
     const date = new Date(p.date);
     const formattedDate = date.toLocaleString();
 
-    wrap.innerHTML = `
+    let imageHtml = p.imageUrl ? `<img src="${p.imageUrl}" style="max-width:100%;margin-top:8px;border-radius:8px">` : '';
+
+    wrap.innerHTML=`
       <h3>${escapeHtml(p.title)}</h3>
       <div class="meta">${formattedDate} · ${escapeHtml(p.authorName)} · ${p.tags.join(', ')}</div>
       <div class="excerpt">${escapeHtml(p.content).slice(0,160)}</div>
+      ${imageHtml}
       <div style="margin-top:8px">
         ${p.authorId===currentUid ? `<button data-id="${p.id}" class="del" style="background:#ef4444">Delete</button>` : ''}
         <button data-id="${p.id}" class="open">Read</button>
@@ -172,26 +203,18 @@ function renderPosts(posts, currentUid){
   renderTags(posts);
 }
 
-function showModal(p){
-  const modal = document.createElement('div');
-  modal.style.position='fixed';
-  modal.style.inset=0;
-  modal.style.display='flex';
-  modal.style.alignItems='center';
-  modal.style.justifyContent='center';
-  modal.style.background='rgba(0,0,0,0.4)';
-  const date = new Date(p.date);
-  const formattedDate = date.toLocaleString();
-  modal.innerHTML = `
-    <div style="max-width:720px;width:92%;background:white;border-radius:12px;padding:18px;box-shadow:0 10px 30px rgba(2,6,23,0.3)">
-      <h2 style="margin-top:0">${escapeHtml(p.title)}</h2>
-      <div style="color:var(--muted);margin-bottom:8px">${formattedDate} · ${escapeHtml(p.authorName)} · ${p.tags.join(', ')}</div>
-      <div style="color:#111;font-size:15px;line-height:1.6">${escapeHtml(p.content).replace(/\n/g,'<br>')}</div>
-      <div style="text-align:right;margin-top:16px"><button id="closeModal">Close</button></div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  document.getElementById('closeModal').addEventListener('click',()=>modal.remove());
+function uploadPost(title, content, authorName, tags, fileInput, callback){
+  if(fileInput.files.length){
+    const file = fileInput.files[0];
+    const ref = storage.ref().child('images/'+Date.now()+'_'+file.name);
+    ref.put(file).then(snapshot=>{
+      snapshot.ref.getDownloadURL().then(url=>{
+        callback({title, content, authorName, tags, imageUrl: url});
+      });
+    });
+  } else {
+    callback({title, content, authorName, tags});
+  }
 }
 
 firebase.auth().onAuthStateChanged(user=>{
@@ -207,32 +230,32 @@ firebase.auth().onAuthStateChanged(user=>{
 
   fetchAndRender();
 
-  document.getElementById('saveBtn').addEventListener('click',()=>{
-    const title = titleEl.value.trim();
-    const content = contentEl.value.trim();
-    const authorName = authorEl.value.trim() || "Anonymous";
-    const tags = tagInput.value.split(',').map(x=>x.trim()).filter(Boolean);
-    if(!title || !content){ alert('Title and content required'); return; }
-
-    const post = {
-      title, content, tags,
-      authorId: uid,
-      authorName,
-      date: new Date().toISOString()
-    };
-
-    db.collection('posts').add(post).then(()=>{
-      titleEl.value=''; contentEl.value=''; tagInput.value='';
-      fetchAndRender();
+  function saveHandler(titleEl, contentEl, authorEl, tagEl, imageEl){
+    const title=titleEl.value.trim();
+    const content=contentEl.value.trim();
+    const authorName=authorEl.value.trim()||'Anonymous';
+    const tags=tagEl.value.split(',').map(x=>x.trim()).filter(Boolean);
+    if(!title||!content){alert('Title and content required');return;}
+    uploadPost(title, content, authorName, tags, imageEl, (postData)=>{
+      postData.authorId=uid;
+      postData.date=new Date().toISOString();
+      db.collection('posts').add(postData).then(()=>{
+        titleEl.value=''; contentEl.value=''; tagEl.value=''; if(imageEl) imageEl.value='';
+        fetchAndRender();
+        if(imageEl===mobileImage) mobileModal.style.display='none';
+      });
     });
-  });
+  }
+
+  document.getElementById('saveBtn').addEventListener('click',()=>saveHandler(titleEl, contentEl, authorEl, tagInput, imageInput));
+  mobileSave.addEventListener('click',()=>saveHandler(mobileTitle, mobileContent, mobileAuthor, mobileTags, mobileImage));
 
   postsEl.addEventListener('click',e=>{
     const id = e.target.dataset.id;
     if(!id) return;
     if(e.target.classList.contains('del')){
       db.collection('posts').doc(id).get().then(doc=>{
-        if(doc.exists && doc.data().authorId===uid){
+        if(doc.exists && doc.data().authorId === uid){
           db.collection('posts').doc(id).delete().then(fetchAndRender);
         }
       });
@@ -245,6 +268,31 @@ firebase.auth().onAuthStateChanged(user=>{
     }
   });
 });
+
+// Modal to read full post
+function showModal(p){
+  const modal = document.createElement('div');
+  modal.style.position='fixed';
+  modal.style.inset=0;
+  modal.style.display='flex';
+  modal.style.alignItems='center';
+  modal.style.justifyContent='center';
+  modal.style.background='rgba(0,0,0,0.4)';
+  const date = new Date(p.date);
+  const formattedDate = date.toLocaleString();
+  let imageHtml = p.imageUrl ? `<img src="${p.imageUrl}" style="max-width:100%;margin-top:8px;border-radius:8px">` : '';
+  modal.innerHTML = `
+    <div style="max-width:720px;width:92%;background:white;border-radius:12px;padding:18px;box-shadow:0 10px 30px rgba(2,6,23,0.3)">
+      <h2 style="margin-top:0">${escapeHtml(p.title)}</h2>
+      <div style="color:var(--muted);margin-bottom:8px">${formattedDate} · ${escapeHtml(p.authorName)} · ${p.tags.join(', ')}</div>
+      <div style="color:#111;font-size:15px;line-height:1.6">${escapeHtml(p.content).replace(/\n/g,'<br>')}</div>
+      ${imageHtml}
+      <div style="text-align:right;margin-top:16px"><button id="closeModal">Close</button></div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  document.getElementById('closeModal').addEventListener('click',()=>modal.remove());
+}
 </script>
 </body>
-          </html>
+</html>
