@@ -202,12 +202,14 @@ firebase.auth().onAuthStateChanged(user=>{
     if(!title || !content){ alert('Title and content required'); return; }
 
     const post = {
-      title, content, tags,
-      authorId: uid,
-      authorName,
-      date: new Date().toISOString().slice(0,10)
-    };
+  title, content, tags,
+  authorId: uid,
+  authorName,
+  date: new Date().toISOString()  // full timestamp with time
+  };
 
+    db.collection('posts').orderBy('date', 'desc')
+    
     db.collection('posts').add(post).then(()=>{
       titleEl.value=''; contentEl.value=''; tagInput.value='';
       fetchAndRender();
@@ -235,3 +237,4 @@ firebase.auth().onAuthStateChanged(user=>{
 </script>
 </body>
           </html>
+
