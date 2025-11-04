@@ -22,7 +22,7 @@ nav a{margin-left:14px;color:var(--muted);text-decoration:none;font-weight:600}
 .excerpt{color:#374151;font-size:15px;line-height:1.45}
 .sidebar h4{margin-top:0}
 .new-post{display:flex;flex-direction:column;gap:8px}
-input[type=text],textarea{width:100%;padding:10px;border:1px solid #e6e7ea;border-radius:8px;font-size:14px}
+textarea{width:100%;padding:10px;border:1px solid #e6e7ea;border-radius:8px;font-size:14px}
 button{background:var(--accent);color:white;border:0;padding:10px 12px;border-radius:8px;font-weight:700;cursor:pointer}
 footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
 #newPostBtn{display:none;position:fixed;bottom:20px;right:20px;padding:12px 16px;background:var(--accent);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;z-index:1000}
@@ -49,6 +49,7 @@ footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
     <a href="#">Home</a>
     <a href="#about">About</a>
     <a href="#contact">Contact</a>
+    <button id="googleSignIn" style="margin-left:14px;background:#34a853;padding:6px 10px;border-radius:6px;font-weight:600;color:white;border:0;cursor:pointer">Sign in with Google</button>
   </nav>
 </header>
 
@@ -74,15 +75,11 @@ footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
     <div class="card">
       <h4>New post</h4>
       <div class="new-post">
-        <input id="authorName" type="text" placeholder="Your name">
-        <input id="title" type="text" placeholder="Post title">
         <textarea id="content" rows="6" placeholder="Write your post here"></textarea>
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button id="saveBtn">Publish</button>
         </div>
-        <div style="font-size:13px;color:var(--muted);margin-top:8px">
-          Posts save to Firebase. You can see all posts publicly, but only edit/delete your own.
-        </div>
+        <div style="font-size:13px;color:var(--muted);margin-top:8px">Posts save to Firebase. Only you can edit/delete your own.</div>
       </div>
     </div>
 
@@ -105,8 +102,6 @@ footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
 
 <div id="mobileModal">
   <div class="modalContent">
-    <input id="mobileAuthor" type="text" placeholder="Your name">
-    <input id="mobileTitle" type="text" placeholder="Post title">
     <textarea id="mobileContent" rows="6" placeholder="Write your post here"></textarea>
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button id="mobileCancel">Cancel</button>
@@ -127,22 +122,23 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-firebase.auth().signInAnonymously();
+const auth = firebase.auth();
 
 const postsEl = document.getElementById('posts');
-const titleEl = document.getElementById('title');
 const contentEl = document.getElementById('content');
-const authorEl = document.getElementById('authorName');
 
 const mobileModal = document.getElementById('mobileModal');
-const mobileTitle = document.getElementById('mobileTitle');
 const mobileContent = document.getElementById('mobileContent');
-const mobileAuthor = document.getElementById('mobileAuthor');
 const mobileSave = document.getElementById('mobileSave');
 const mobileCancel = document.getElementById('mobileCancel');
 
 document.getElementById('newPostBtn').addEventListener('click',()=>mobileModal.style.display='flex');
 mobileCancel.addEventListener('click',()=>mobileModal.style.display='none');
+
+document.getElementById('googleSignIn').addEventListener('click',()=>{
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider);
+});
 
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
@@ -154,7 +150,7 @@ function renderPosts(posts, currentUid){
     const date = new Date(p.date);
     const formattedDate = date.toLocaleString();
     wrap.innerHTML=`
-      <h3>${escapeHtml(p.title)}</h3>
+      <h3>${escapeHtml(p.title || 'Untitled')}</h3>
       <div class="meta">${formattedDate} · ${escapeHtml(p.authorName)}</div>
       <div class="excerpt">${escapeHtml(p.content).slice(0,160)}</div>
       <div style="margin-top:8px">
@@ -166,43 +162,43 @@ function renderPosts(posts, currentUid){
   });
 }
 
-firebase.auth().onAuthStateChanged(user=>{
+auth.onAuthStateChanged(user=>{
   if(!user) return;
-  const uid = user.uid;
 
   function fetchAndRender(){
     db.collection('posts').orderBy('date','desc').get().then(snapshot=>{
       const posts = snapshot.docs.map(doc=>({id:doc.id,...doc.data()}));
-      renderPosts(posts, uid);
+      renderPosts(posts, user.uid);
     });
   }
 
   fetchAndRender();
 
-  function saveHandler(titleEl, contentEl, authorEl){
-    const title = titleEl.value.trim();
-    const content = contentEl.value.trim();
-    const authorName = authorEl.value.trim() || 'Anonymous';
-    if(!title || !content){ alert('Title and content required'); return; }
-
-    const postData = { title, content, authorName, authorId: uid, date: new Date().toISOString() };
+  function saveHandler(contentInput){
+    const content = contentInput.value.trim();
+    if(!content){ alert('Content required'); return; }
+    const postData = { 
+      content, 
+      authorId: user.uid, 
+      authorName: user.displayName || 'Anonymous', 
+      date: new Date().toISOString() 
+    };
     db.collection('posts').add(postData).then(()=>{
-      titleEl.value = '';
-      contentEl.value = '';
-      if(titleEl === mobileTitle) mobileModal.style.display = 'none';
+      contentInput.value='';
+      if(contentInput===mobileContent) mobileModal.style.display='none';
       fetchAndRender();
     });
   }
 
-  document.getElementById('saveBtn').addEventListener('click',()=>saveHandler(titleEl, contentEl, authorEl));
-  mobileSave.addEventListener('click',()=>saveHandler(mobileTitle, mobileContent, mobileAuthor));
+  document.getElementById('saveBtn').addEventListener('click',()=>saveHandler(contentEl));
+  mobileSave.addEventListener('click',()=>saveHandler(mobileContent));
 
   postsEl.addEventListener('click',e=>{
     const id = e.target.dataset.id;
     if(!id) return;
     if(e.target.classList.contains('del')){
       db.collection('posts').doc(id).get().then(doc=>{
-        if(doc.exists && doc.data().authorId===uid){
+        if(doc.exists && doc.data().authorId===user.uid){
           db.collection('posts').doc(id).delete().then(fetchAndRender);
         }
       });
@@ -228,7 +224,7 @@ function showModal(p){
   const formattedDate = date.toLocaleString();
   modal.innerHTML = `
     <div style="max-width:720px;width:92%;background:white;border-radius:12px;padding:18px;box-shadow:0 10px 30px rgba(2,6,23,0.3)">
-      <h2 style="margin-top:0">${escapeHtml(p.title)}</h2>
+      <h2 style="margin-top:0">${escapeHtml(p.title || 'Untitled')}</h2>
       <div style="color:var(--muted);margin-bottom:8px">${formattedDate} · ${escapeHtml(p.authorName)}</div>
       <div style="color:#111;font-size:15px;line-height:1.6">${escapeHtml(p.content).replace(/\n/g,'<br>')}</div>
       <div style="text-align:right;margin-top:16px"><button id="closeModal">Close</button></div>
@@ -239,4 +235,4 @@ function showModal(p){
 }
 </script>
 </body>
-        </html>
+  </html>
