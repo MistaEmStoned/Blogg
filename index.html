@@ -146,9 +146,14 @@ function renderPosts(posts, currentUid){
   posts.forEach(p=>{
     const wrap = document.createElement('article');
     wrap.className = 'post card';
+
+    // Convert ISO date to readable local format
+    const date = new Date(p.date);
+    const formattedDate = date.toLocaleString();
+
     wrap.innerHTML = `
       <h3>${escapeHtml(p.title)}</h3>
-      <div class="meta">${p.date} · ${escapeHtml(p.authorName)} · ${p.tags.join(', ')}</div>
+      <div class="meta">${formattedDate} · ${escapeHtml(p.authorName)} · ${p.tags.join(', ')}</div>
       <div class="excerpt">${escapeHtml(p.content).slice(0,160)}</div>
       <div style="margin-top:8px">
         ${p.authorId===currentUid ? `<button data-id="${p.id}" class="del" style="background:#ef4444">Delete</button>` : ''}
@@ -237,4 +242,5 @@ firebase.auth().onAuthStateChanged(user=>{
 </script>
 </body>
           </html>
+
 
