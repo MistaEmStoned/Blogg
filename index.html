@@ -24,7 +24,6 @@ button{background:#2563eb;color:white;border:0;padding:10px 12px;border-radius:8
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-storage-compat.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -48,7 +47,6 @@ button{background:#2563eb;color:white;border:0;padding:10px 12px;border-radius:8
   <input id="authorName" type="text" placeholder="Your name">
   <input id="title" type="text" placeholder="Post title">
   <textarea id="content" rows="6" placeholder="Write your post"></textarea>
-  <input id="imageInput" type="file" accept="image/*">
   <button id="saveBtn">Publish</button>
 </aside>
 </main>
@@ -73,56 +71,37 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const storage = firebase.storage();
 firebase.auth().signInAnonymously();
 
 const postsEl = document.getElementById('posts');
 const titleEl = document.getElementById('title');
 const contentEl = document.getElementById('content');
 const authorEl = document.getElementById('authorName');
-const imageInput = document.getElementById('imageInput');
 
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
-function renderPosts(posts, currentUid){
+function renderPosts(posts){
   postsEl.innerHTML = '<h2>Latest posts</h2>';
   posts.forEach(p=>{
     const wrap = document.createElement('article');
     wrap.className='post card';
     const date = new Date(p.date).toLocaleString();
-    const imageHtml = p.imageUrl ? `<img src="${p.imageUrl}" style="max-width:100%;margin-top:8px;border-radius:8px">` : '';
     wrap.innerHTML=`
       <h3>${escapeHtml(p.title)}</h3>
       <div class="meta">${date} · ${escapeHtml(p.authorName)}</div>
       <div class="excerpt">${escapeHtml(p.content)}</div>
-      ${imageHtml}
     `;
     postsEl.appendChild(wrap);
   });
 }
 
-function uploadPost(title, content, authorName, fileInput, callback){
-  if(fileInput && fileInput.files.length){
-    const file = fileInput.files[0];
-    const ref = storage.ref('images/'+Date.now()+'_'+file.name);
-    ref.put(file).then(snapshot=>{
-      snapshot.ref.getDownloadURL().then(url=>{
-        callback({title, content, authorName, imageUrl: url});
-      }).catch(()=>callback({title, content, authorName}));
-    }).catch(()=>callback({title, content, authorName}));
-  } else {
-    callback({title, content, authorName});
-  }
-}
-
 firebase.auth().onAuthStateChanged(user=>{
   if(!user) return;
-  const uid = user.uid;
 
   function fetchAndRender(){
     db.collection('posts').orderBy('date','desc').get().then(snapshot=>{
       const posts = snapshot.docs.map(doc=>({id:doc.id,...doc.data()}));
-      renderPosts(posts, uid);
+      renderPosts(posts);
     });
   }
 
@@ -133,13 +112,11 @@ firebase.auth().onAuthStateChanged(user=>{
     const content=contentEl.value.trim();
     const authorName=authorEl.value.trim()||'Anonymous';
     if(!title||!content){alert('Title and content required');return;}
-    uploadPost(title, content, authorName, imageInput, postData=>{
-      postData.authorId=uid;
-      postData.date=new Date().toISOString();
-      db.collection('posts').add(postData).then(()=>{
-        titleEl.value=''; contentEl.value=''; imageInput.value='';
-        fetchAndRender();
-      });
+
+    const postData = {title, content, authorName, date: new Date().toISOString()};
+    db.collection('posts').add(postData).then(()=>{
+      titleEl.value=''; contentEl.value='';
+      fetchAndRender();
     });
   });
 });
